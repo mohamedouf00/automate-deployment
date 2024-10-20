@@ -34,6 +34,8 @@ jobs:
           SSH_USER="ubuntu" # Adjust based on your SSH user
           INSTANCE_ID=${{ secrets.INSTANCE_ID }}
           INSTANCE_PUBLIC_IP=${{ secrets.INSTANCE_PUBLIC_IP }}
+          echo "INSTANCE_ID=${{ secrets.INSTANCE_ID }}"
+          echo "INSTANCE_PUBLIC_IP=${{ secrets.INSTANCE_PUBLIC_IP }}"
 
           if [ -z "$INSTANCE_ID" ]; then
             echo "No EC2 instance found with the tag $APP_INSTANCE_TAG"
