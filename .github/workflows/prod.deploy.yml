@@ -35,20 +35,29 @@ jobs:
           PM2_PROCESS="all" # Process name if using PM2
           TEMP_FILE_PATH="/tmp/app_versions.txt"
           SSH_USER="ubuntu" # Change based on the user you connect with
-          SSH_KEY_PATH="${{ secrets.SSH_PRIVATE_KEY }}" # Path to your SSH private key
-          LAUNCH_TEMPLATE_NAME="ouf-LT"
-          AUTOSCALING_TAG="ouf-asg"
-          INSTANCE_PUBLIC_IP=${{secrets.INSTANCE_PUBLIC_IP}}
-
-          # If the EC2 instance's public IP is not found, exit
+          SSH_KEY_PATH="${{secrets.SSH_PRIVATE_KEY}}" # Using GitHub secrets for the SSH key
+          INSTANCE_ID=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=$APP_INSTANCE_TAG" --query "Reservations[*].Instances[*].InstanceId" --output text)
+          
+          if [ -z "$INSTANCE_ID" ]; then
+            echo "No EC2 instance found with the tag $APP_INSTANCE_TAG"
+            exit 1
+          fi
+          
+          INSTANCE_PUBLIC_IP=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[*].Instances[*].PublicIpAddress" --output text)
+          
           if [ -z "$INSTANCE_PUBLIC_IP" ]; then
             echo "EC2 instance's public IP not found. Exiting."
             exit 1
           fi
+
           echo "Updating EC2 instance at IP: $INSTANCE_PUBLIC_IP"
 
+          # Save the private key for SSH usage
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > private_key.pem
+          chmod 600 private_key.pem
+
           # Run the SSH commands to update the projects
-          ssh -o StrictHostKeyChecking=no -i "$SSH_KEY_PATH" $SSH_USER@$INSTANCE_PUBLIC_IP << 'EOF'
+          ssh -o StrictHostKeyChecking=no -i private_key.pem $SSH_USER@$INSTANCE_PUBLIC_IP << 'EOF'
             # Project One: Checkout to the latest release and log version
             cd $APP_ONE_PATH &&
             git fetch --all &&
@@ -78,15 +87,14 @@ jobs:
             npm run build &&
             pm2 restart $PM2_PROCESS
           EOF
+          
           echo "Update completed on EC2 instance at IP: $INSTANCE_PUBLIC_IP"
 
       # Step 4: Create AMI from the updated EC2 instance
       - name: Create AMI from EC2
         run: |
-          # Use the dynamically generated version numbers and current date
           AMI_NAME="App-AMI-$(date +'%Y-%m-%d')-project1-${VERSION_ONE}-project2-${VERSION_TWO}"
 
-          # Create an AMI from the updated EC2 instance
           AMI_ID=$(aws ec2 create-image --instance-id $INSTANCE_ID --name "$AMI_NAME" --no-reboot --output text)
           if [ -z "$AMI_ID" ]; then
             echo "AMI creation failed. Exiting."
@@ -98,16 +106,13 @@ jobs:
       # Step 5: Update the AWS Launch Template with the new AMI ID
       - name: Update Launch Template with new AMI
         run: |
-          # Get the Launch Template ID
           TEMPLATE_ID=$(aws ec2 describe-launch-templates --query "LaunchTemplates[?LaunchTemplateName=='$LAUNCH_TEMPLATE_NAME'].LaunchTemplateId" --output text)
 
-          # If Launch Template is not found, exit
           if [ -z "$TEMPLATE_ID" ]; then
             echo "Launch Template not found. Exiting."
             exit 1
           fi
 
-          # Create a new version of the launch template with the new AMI
           aws ec2 create-launch-template-version --launch-template-id $TEMPLATE_ID --source-version 1 --launch-template-data '{"ImageId":"'"$AMI_ID"'"}'
           aws ec2 modify-launch-template --launch-template-id $TEMPLATE_ID --default-version 2
           echo "Launch Template updated with new AMI: $AMI_ID"
@@ -115,15 +120,12 @@ jobs:
       # Step 6: Trigger a Rolling Update in the Auto Scaling Group
       - name: Trigger Rolling Update
         run: |
-          # Get the Auto Scaling Group Name based on the AUTOSCALING_TAG
           ASG_NAME=$(aws autoscaling describe-auto-scaling-groups --query "AutoScalingGroups[?Tags[?Key=='$AUTOSCALING_TAG']].AutoScalingGroupName" --output text)
 
-          # If Auto Scaling Group is not found, exit
           if [ -z "$ASG_NAME" ]; then
             echo "Auto Scaling Group not found. Exiting."
             exit 1
           fi
 
-          # Trigger an Instance Refresh to perform a rolling update
           aws autoscaling start-instance-refresh --auto-scaling-group-name $ASG_NAME --preferences '{"MinHealthyPercentage": 90, "InstanceWarmup": 300}'
           echo "Triggered Rolling Update for Auto Scaling Group: $ASG_NAME"
