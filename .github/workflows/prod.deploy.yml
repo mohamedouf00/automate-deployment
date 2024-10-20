@@ -32,6 +32,8 @@ jobs:
           PM2_PROCESS="all" # Adjust this based on your PM2 configuration
           TEMP_FILE_PATH="/tmp/app_versions.txt"
           SSH_USER="ubuntu" # Adjust based on your SSH user
+
+          # Get EC2 instance ID from tag
           INSTANCE_ID=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=$APP_INSTANCE_TAG" --query "Reservations[*].Instances[*].InstanceId" --output text)
 
           if [ -z "$INSTANCE_ID" ]; then
@@ -39,6 +41,7 @@ jobs:
             exit 1
           fi
 
+          # Get the public IP of the EC2 instance
           INSTANCE_PUBLIC_IP=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[*].Instances[*].PublicIpAddress" --output text)
 
           if [ -z "$INSTANCE_PUBLIC_IP" ]; then
@@ -51,19 +54,20 @@ jobs:
           # Save the private key for SSH usage
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > private_key.pem
           chmod 600 private_key.pem
-          # Run the SSH commands to update the projects
+          
+          # Run SSH commands to update the projects
           ssh -o StrictHostKeyChecking=no -i private_key.pem $SSH_USER@$INSTANCE_PUBLIC_IP << EOF
-            # Initialize fnm and add the necessary paths to npm and pm2
+            # Initialize fnm (if needed), set up necessary paths to npm and pm2
             export PATH=$PATH:/run/user/1000/fnm_multishells/7830_1729424728206/bin
 
-            # Project One: Checkout to the latest release and log version
+            # Project One: Checkout the latest release and log version
             cd $APP_ONE_PATH &&
             git fetch --all &&
             git checkout \$(git describe --tags \$(git rev-list --tags --max-count=1)) &&
             VERSION_ONE=\$(git describe --tags \$(git rev-list --tags --max-count=1)) &&
             echo "Project One Version: \$VERSION_ONE" >> $TEMP_FILE_PATH &&
 
-            # Project Two: Checkout to the latest release and log version
+            # Project Two: Checkout the latest release and log version
             cd $APP_TWO_PATH &&
             git fetch --all &&
             git checkout \$(git describe --tags \$(git rev-list --tags --max-count=1)) &&
