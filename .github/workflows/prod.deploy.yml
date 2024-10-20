@@ -25,6 +25,7 @@ jobs:
       # Step 3: Debug Secrets (Optional for Debugging)
       - name: Debug Secrets
         run: |
+          echo "Debugging Secrets..."
           if [ -z "${{ secrets.INSTANCE_ID }}" ]; then
             echo "INSTANCE_ID secret is not set!"
           else
@@ -40,6 +41,7 @@ jobs:
       - name: Define Variables and Update EC2 Using SSH
         run: |
           set -e  # Exit on any error
+          echo "Setting up variables and updating EC2 instance via SSH..."
           APP_INSTANCE_TAG="live-test"
           APP_ONE_PATH="/home/ubuntu/automate-deployment"
           APP_TWO_PATH="/home/ubuntu/automate-deployment-1"
@@ -67,44 +69,60 @@ jobs:
           echo "Updating EC2 instance at IP: $INSTANCE_PUBLIC_IP"
 
           # Save the private key for SSH usage
+          echo "Saving SSH private key..."
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > private_key.pem
           chmod 600 private_key.pem
 
           # Run SSH commands to update the projects and fetch the versions
+          echo "Connecting to EC2 via SSH to update projects and retrieve versions..."
           ssh -o StrictHostKeyChecking=no -i private_key.pem $SSH_USER@$INSTANCE_PUBLIC_IP << EOF
             export PATH=$PATH:/run/user/1000/fnm_multishells/7830_1729424728206/bin
 
-            # Project One: Checkout the latest release and log version
+            echo "Checking out latest version of Project One..."
             cd $APP_ONE_PATH &&
             git fetch --all &&
             git checkout \$(git describe --tags \$(git rev-list --tags --max-count=1)) &&
             VERSION_ONE=\$(git describe --tags \$(git rev-list --tags --max-count=1)) &&
             echo "Project One Version: \$VERSION_ONE" >> $TEMP_FILE_PATH &&
 
-            # Project Two: Checkout the latest release and log version
+            echo "Checking out latest version of Project Two..."
             cd $APP_TWO_PATH &&
             git fetch --all &&
             git checkout \$(git describe --tags \$(git rev-list --tags --max-count=1)) &&
             VERSION_TWO=\$(git describe --tags \$(git rev-list --tags --max-count=1)) &&
             echo "Project Two Version: \$VERSION_TWO" >> $TEMP_FILE_PATH &&
 
-            # Output the versions
+            echo "Outputting the versions..."
             cat $TEMP_FILE_PATH &&
 
-            # Install dependencies, build, and restart services for Project One
+            echo "Installing dependencies and restarting services for Project One..."
             cd $APP_ONE_PATH &&
             npm install &&
             pm2 restart $PM2_PROCESS &&
 
-            # Install dependencies, build, and restart services for Project Two
+            echo "Installing dependencies and restarting services for Project Two..."
             cd $APP_TWO_PATH &&
             npm install &&
             pm2 restart $PM2_PROCESS
           EOF
 
-          # Read versions into environment variables for later use
+          echo "Reading project versions..."
           VERSION_ONE=$(grep "Project One Version" $TEMP_FILE_PATH | awk '{print $4}')
           VERSION_TWO=$(grep "Project Two Version" $TEMP_FILE_PATH | awk '{print $4}')
+          
+          # Check if versions were successfully retrieved
+          if [ -z "$VERSION_ONE" ]; then
+            echo "Error: Failed to retrieve VERSION_ONE. Exiting."
+            exit 1
+          fi
+
+          if [ -z "$VERSION_TWO" ]; then
+            echo "Error: Failed to retrieve VERSION_TWO. Exiting."
+            exit 1
+          fi
+
+          echo "VERSION_ONE=$VERSION_ONE"
+          echo "VERSION_TWO=$VERSION_TWO"
           echo "VERSION_ONE=$VERSION_ONE" >> $GITHUB_ENV
           echo "VERSION_TWO=$VERSION_TWO" >> $GITHUB_ENV
 
@@ -112,17 +130,18 @@ jobs:
       - name: Create AMI from EC2
         run: |
           set -e  # Exit on any error
+          echo "Creating AMI from EC2 instance..."
           INSTANCE_ID="${{ secrets.INSTANCE_ID }}"
           VERSION_ONE="${{ env.VERSION_ONE }}"
           VERSION_TWO="${{ env.VERSION_TWO }}"
 
-          echo "Creating AMI from EC2 instance: $INSTANCE_ID"
-          if [ -z "$INSTANCE_ID" ]; then
-            echo "Error: INSTANCE_ID is not set. Exiting."
-            exit 1
-          fi
+          echo "INSTANCE_ID: $INSTANCE_ID"
+          echo "VERSION_ONE: $VERSION_ONE"
+          echo "VERSION_TWO: $VERSION_TWO"
 
           AMI_NAME="App-AMI-$(date +'%Y-%m-%d')-project1-${VERSION_ONE}-project2-${VERSION_TWO}"
+
+          echo "AMI Name: $AMI_NAME"
 
           AMI_ID=$(aws ec2 create-image --instance-id "$INSTANCE_ID" --name "$AMI_NAME" --no-reboot --query 'ImageId' --output text)
 
@@ -132,39 +151,41 @@ jobs:
           fi
 
           echo "Created AMI: $AMI_ID"
+          echo "AMI_ID=$AMI_ID"
           echo "AMI_ID=$AMI_ID" >> $GITHUB_ENV
 
       # Step 6: Update the AWS Launch Template with the new AMI ID
       - name: Update Launch Template with new AMI
         run: |
           set -e  # Exit on any error
+          echo "Updating AWS Launch Template with new AMI..."
           LAUNCH_TEMPLATE_NAME="ouf-LT"
           TEMPLATE_ID=$(aws ec2 describe-launch-templates --query "LaunchTemplates[?LaunchTemplateName=='$LAUNCH_TEMPLATE_NAME'].LaunchTemplateId" --output text)
           if [ -z "$TEMPLATE_ID" ]; then
             echo "Launch Template not found. Exiting."
             exit 1
           fi
+          echo "Launch Template ID: $TEMPLATE_ID"
 
-          # Check if the AMI_ID is set
-          if [ -z "${{ env.AMI_ID }}" ]; then
+          AMI_ID="${{ env.AMI_ID }}"
+          if [ -z "$AMI_ID" ]; then
             echo "AMI_ID is not set. Exiting."
             exit 1
           fi
+          echo "AMI_ID: $AMI_ID"
 
-          # Check if the AMI_NAME is available, not pending
-          AMI_NAME="App-AMI-$(date +'%Y-%m-%d')-project1-${{ env.VERSION_ONE }}-project2-${{ env.VERSION_TWO }}"
-          AMI_ID="${{ env.AMI_ID }}"
           AMI_STATE=$(aws ec2 describe-images --image-ids $AMI_ID --query 'Images[0].State' --output text)
           echo "AMI State: $AMI_STATE"
           while [ "$AMI_STATE" == "pending" ]; do
             echo "AMI is still pending. Waiting for it to be available..."
             sleep 10
             AMI_STATE=$(aws ec2 describe-images --image-ids $AMI_ID --query 'Images[0].State' --output text)
+            echo "AMI State: $AMI_STATE"
           done
 
-          aws ec2 create-launch-template-version --launch-template-id $TEMPLATE_ID --source-version 1 --launch-template-data '{"ImageId":"'"${{ env.AMI_ID }}"'"}'
-          aws ec2 modify-launch-template --launch-template-id $TEMPLATE_ID  --default-version 2
-          ## Set resource tags needed by image name
+          echo "AMI is available. Creating new Launch Template version..."
+          aws ec2 create-launch-template-version --launch-template-id $TEMPLATE_ID --source-version 1 --launch-template-data '{"ImageId":"'"$AMI_ID"'"}'
+          aws ec2 modify-launch-template --launch-template-id $TEMPLATE_ID --default-version 2
           aws ec2 create-tags --resources $AMI_ID --tags Key=Name,Value=$AMI_NAME
           echo "Launch Template updated with new AMI: $AMI_ID"
 
@@ -172,13 +193,16 @@ jobs:
       - name: Trigger Rolling Update
         run: |
           set -e  # Exit on any error
+          echo "Triggering Rolling Update in Auto Scaling Group..."
           AUTOSCALING_TAG="ouf-asg"
-          ASG_NAME=$(
-            aws autoscaling describe-auto-scaling-groups --query "AutoScalingGroups[?Tags[?Key=='name' && Value=='$AUTOSCALING_TAG']].AutoScalingGroupName" --output text
-          )
-          if [ -z "$ASG_NAME" ]; then
+          ASG_NAME=$(aws autoscaling describe-auto-scaling-groups --query "AutoScalingGroups[?Tags[?Key=='name' && Value=='$AUTOSCALING_TAG']].AutoScalingGroupName" --output text)
+                    if [ -z "$ASG_NAME" ]; then
             echo "Auto Scaling Group not found. Exiting."
             exit 1
           fi
+          echo "Auto Scaling Group Name: $ASG_NAME"
+
+          echo "Starting instance refresh..."
           aws autoscaling start-instance-refresh --auto-scaling-group-name $ASG_NAME --preferences '{"MinHealthyPercentage": 90, "InstanceWarmup": 300}'
           echo "Triggered Rolling Update for Auto Scaling Group: $ASG_NAME"
+
