@@ -1,9 +1,12 @@
 name: Deploy to EC2 with AMI Update and Rolling Deployment
 
 on:
-  push:
-    branches:
-      - main # Trigger on push to the main branch
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to deploy to Production"
+        required: true
+        default: "production"
 
 jobs:
   deploy:
@@ -27,8 +30,8 @@ jobs:
         run: |
           # Variables
           APP_INSTANCE_TAG="live-test"
-          APP_ONE_PATH="/home/ubuntu/aydi-worker-backend"
-          APP_TWO_PATH="/home/ubuntu/aydi-inventory-backend"
+          APP_ONE_PATH="/home/ubuntu/automate-deployment"
+          APP_TWO_PATH="/home/ubuntu/automate-deployment-1"
           PM2_PROCESS="all" # Process name if using PM2
           TEMP_FILE_PATH="/tmp/app_versions.txt"
           SSH_USER="ubuntu" # Change based on the user you connect with
