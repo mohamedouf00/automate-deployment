@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: "Environment to deploy to Production"
+        description: "Environment to deploy to"
         required: true
         default: "production"
 
@@ -23,7 +23,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1 # Change this with your region
+          aws-region: us-east-1 # Adjust this based on your region
 
       # Step 3: Define all variables and update EC2 instances using SSH
       - name: Define Variables and Update EC2 Using SSH
@@ -32,10 +32,9 @@ jobs:
           APP_INSTANCE_TAG="live-test"
           APP_ONE_PATH="/home/ubuntu/automate-deployment"
           APP_TWO_PATH="/home/ubuntu/automate-deployment-1"
-          PM2_PROCESS="all" # Process name if using PM2
+          PM2_PROCESS="all" # Adjust this based on your PM2 configuration
           TEMP_FILE_PATH="/tmp/app_versions.txt"
-          SSH_USER="ubuntu" # Change based on the user you connect with
-          SSH_KEY_PATH="${{secrets.SSH_PRIVATE_KEY}}" # Using GitHub secrets for the SSH key
+          SSH_USER="ubuntu" # Adjust based on your SSH user
           INSTANCE_ID=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=$APP_INSTANCE_TAG" --query "Reservations[*].Instances[*].InstanceId" --output text)
           
           if [ -z "$INSTANCE_ID" ]; then
@@ -57,7 +56,7 @@ jobs:
           chmod 600 private_key.pem
 
           # Run the SSH commands to update the projects
-                     ssh -o StrictHostKeyChecking=no -i private_key.pem $SSH_USER@$INSTANCE_PUBLIC_IP << EOF
+          ssh -o StrictHostKeyChecking=no -i private_key.pem $SSH_USER@$INSTANCE_PUBLIC_IP << EOF
             # Project One: Checkout to the latest release and log version
             cd $APP_ONE_PATH &&
             git fetch --all &&
@@ -77,19 +76,14 @@ jobs:
 
             # Install dependencies, build, and restart services for Project One
             cd $APP_ONE_PATH &&
-            /usr/bin/npm install &&
-            /usr/bin/npm run build &&
+           npm install &&
             pm2 restart $PM2_PROCESS &&
 
             # Install dependencies, build, and restart services for Project Two
             cd $APP_TWO_PATH &&
-            /usr/bin/npm install &&
-            /usr/bin/npm run build &&
+           npm install &&
             pm2 restart $PM2_PROCESS
           EOF
-
-
-          
           echo "Update completed on EC2 instance at IP: $INSTANCE_PUBLIC_IP"
 
       # Step 4: Create AMI from the updated EC2 instance
@@ -108,6 +102,7 @@ jobs:
       # Step 5: Update the AWS Launch Template with the new AMI ID
       - name: Update Launch Template with new AMI
         run: |
+          LAUNCH_TEMPLATE_NAME="your-launch-template-name" # Update with your Launch Template name
           TEMPLATE_ID=$(aws ec2 describe-launch-templates --query "LaunchTemplates[?LaunchTemplateName=='$LAUNCH_TEMPLATE_NAME'].LaunchTemplateId" --output text)
 
           if [ -z "$TEMPLATE_ID" ]; then
@@ -122,6 +117,7 @@ jobs:
       # Step 6: Trigger a Rolling Update in the Auto Scaling Group
       - name: Trigger Rolling Update
         run: |
+          AUTOSCALING_TAG="your-autoscaling-tag-key" # Update with your Auto Scaling tag key
           ASG_NAME=$(aws autoscaling describe-auto-scaling-groups --query "AutoScalingGroups[?Tags[?Key=='$AUTOSCALING_TAG']].AutoScalingGroupName" --output text)
 
           if [ -z "$ASG_NAME" ]; then
