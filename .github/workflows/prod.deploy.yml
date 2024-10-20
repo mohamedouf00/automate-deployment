@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Environment to deploy to Production'
+        description: "Environment to deploy to Production"
         required: true
-        default: 'production'
+        default: "production"
 
 jobs:
   deploy:
@@ -47,35 +47,31 @@ jobs:
           fi
           echo "Updating EC2 instance: $INSTANCE_ID"
 
-          # Run SSM command to pull latest release and log version information
+            # Run SSM command to pull latest release and log version information
           aws ssm send-command \
             --instance-ids $INSTANCE_ID \
             --document-name "AWS-RunShellScript" \
-            --parameters commands='
-            # Project One: Checkout to the latest release and log version
-            cd '"$APP_ONE_PATH"' &&
-            git fetch --all &&
-            git checkout $(git describe --tags $(git rev-list --tags --max-count=1)) &&
-            VERSION_ONE=$(git describe --tags $(git rev-list --tags --max-count=1)) &&
-            echo "Project One Version: $VERSION_ONE" >> '"$TEMP_FILE_PATH"' &&
-
-            # Project Two: Checkout to the latest release and log version
-            cd '"$APP_TWO_PATH"' &&
-            git fetch --all &&
-            git checkout $(git describe --tags $(git rev-list --tags --max-count=1)) &&
-            VERSION_TWO=$(git describe --tags $(git rev-list --tags --max-count=1)) &&
-            echo "Project Two Version: $VERSION_TWO" >> '"$TEMP_FILE_PATH"' &&
-
-            # Output the versions
-            cat '"$TEMP_FILE_PATH"' &&
-
-            # Install dependencies, build, and restart services
-            cd '"$APP_ONE_PATH"' && npm install &&
-            pm2 restart $PM2_PROCESS &&
-
-            cd '"$APP_TWO_PATH"' && npm install  &&
-            pm2 restart $PM2_PROCESS
-            '
+            --parameters commands='[
+              "cd '"$APP_ONE_PATH"'",
+              "git fetch --all",
+              "git checkout $(git describe --tags $(git rev-list --tags --max-count=1))",
+              "VERSION_ONE=$(git describe --tags $(git rev-list --tags --max-count=1))",
+              "echo Project One Version: $VERSION_ONE >> '"$TEMP_FILE_PATH"'",
+              
+              "cd '"$APP_TWO_PATH"'",
+              "git fetch --all",
+              "git checkout $(git describe --tags $(git rev-list --tags --max-count=1))",
+              "VERSION_TWO=$(git describe --tags $(git rev-list --tags --max-count=1))",
+              "echo Project Two Version: $VERSION_TWO >> '"$TEMP_FILE_PATH"'",
+              
+              "cat '"$TEMP_FILE_PATH"'",
+              
+              "cd '"$APP_ONE_PATH"' && npm install && npm run build",
+              "pm2 restart $PM2_PROCESS",
+              
+              "cd '"$APP_TWO_PATH"' && npm install && npm run build",
+              "pm2 restart $PM2_PROCESS"
+            ]'
           echo "Update command sent to EC2 instance: $INSTANCE_ID"
 
       # Step 4: Create AMI from the updated EC2 instance
