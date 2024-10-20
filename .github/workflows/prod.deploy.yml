@@ -22,11 +22,19 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1 # Adjust this based on your region
 
-      # Step 3: Debug Secrets (Optional)
+      # Step 3: Debug Secrets (Optional for Debugging)
       - name: Debug Secrets
         run: |
-          echo "INSTANCE_ID: ${{ secrets.INSTANCE_ID }}"
-          echo "INSTANCE_PUBLIC_IP: ${{ secrets.INSTANCE_PUBLIC_IP }}"
+          if [ -z "${{ secrets.INSTANCE_ID }}" ]; then
+            echo "INSTANCE_ID secret is not set!"
+          else
+            echo "INSTANCE_ID: ${{ secrets.INSTANCE_ID }}"
+          fi
+          if [ -z "${{ secrets.INSTANCE_PUBLIC_IP }}" ]; then
+            echo "INSTANCE_PUBLIC_IP secret is not set!"
+          else
+            echo "INSTANCE_PUBLIC_IP: ${{ secrets.INSTANCE_PUBLIC_IP }}"
+          fi
 
       # Step 4: Define all variables and update EC2 instances using SSH
       - name: Define Variables and Update EC2 Using SSH
@@ -39,13 +47,14 @@ jobs:
           PM2_PROCESS="all" # Adjust this based on your PM2 configuration
           TEMP_FILE_PATH="/tmp/app_versions.txt"
           SSH_USER="ubuntu" # Adjust based on your SSH user
-          INSTANCE_ID=${{ secrets.INSTANCE_ID }}
-          INSTANCE_PUBLIC_IP=${{ secrets.INSTANCE_PUBLIC_IP }}
-          echo "INSTANCE_ID=${{ secrets.INSTANCE_ID }}"
-          echo "INSTANCE_PUBLIC_IP=${{ secrets.INSTANCE_PUBLIC_IP }}"
+          INSTANCE_ID="${{ secrets.INSTANCE_ID }}"
+          INSTANCE_PUBLIC_IP="${{ secrets.INSTANCE_PUBLIC_IP }}"
+
+          echo "INSTANCE_ID: $INSTANCE_ID"
+          echo "INSTANCE_PUBLIC_IP: $INSTANCE_PUBLIC_IP"
 
           if [ -z "$INSTANCE_ID" ]; then
-            echo "No EC2 instance found with the tag $APP_INSTANCE_TAG"
+            echo "No EC2 instance ID found. Exiting."
             exit 1
           fi
           
@@ -107,6 +116,7 @@ jobs:
       - name: Create AMI from EC2
         run: |
           set -e  # Exit on any error
+          INSTANCE_ID="${{ secrets.INSTANCE_ID }}"
           echo "Creating AMI from EC2 instance: $INSTANCE_ID"
 
           if [ -z "$INSTANCE_ID" ]; then
