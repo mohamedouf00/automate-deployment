@@ -57,20 +57,20 @@ jobs:
           chmod 600 private_key.pem
 
           # Run the SSH commands to update the projects
-          ssh -o StrictHostKeyChecking=no -i private_key.pem $SSH_USER@$INSTANCE_PUBLIC_IP << 'EOF'
+                    ssh -o StrictHostKeyChecking=no -i private_key.pem $SSH_USER@$INSTANCE_PUBLIC_IP << EOF
             # Project One: Checkout to the latest release and log version
             cd $APP_ONE_PATH &&
             git fetch --all &&
-            git checkout $(git describe --tags $(git rev-list --tags --max-count=1)) &&
-            VERSION_ONE=$(git describe --tags $(git rev-list --tags --max-count=1)) &&
-            echo "Project One Version: $VERSION_ONE" >> $TEMP_FILE_PATH &&
+            git checkout \$(git describe --tags \$(git rev-list --tags --max-count=1)) &&
+            VERSION_ONE=\$(git describe --tags \$(git rev-list --tags --max-count=1)) &&
+            echo "Project One Version: \$VERSION_ONE" >> $TEMP_FILE_PATH &&
 
             # Project Two: Checkout to the latest release and log version
             cd $APP_TWO_PATH &&
             git fetch --all &&
-            git checkout $(git describe --tags $(git rev-list --tags --max-count=1)) &&
-            VERSION_TWO=$(git describe --tags $(git rev-list --tags --max-count=1)) &&
-            echo "Project Two Version: $VERSION_TWO" >> $TEMP_FILE_PATH &&
+            git checkout \$(git describe --tags \$(git rev-list --tags --max-count=1)) &&
+            VERSION_TWO=\$(git describe --tags \$(git rev-list --tags --max-count=1)) &&
+            echo "Project Two Version: \$VERSION_TWO" >> $TEMP_FILE_PATH &&
 
             # Output the versions
             cat $TEMP_FILE_PATH &&
@@ -78,15 +78,14 @@ jobs:
             # Install dependencies, build, and restart services for Project One
             cd $APP_ONE_PATH &&
             npm install &&
-            npm run build &&
             pm2 restart $PM2_PROCESS &&
 
             # Install dependencies, build, and restart services for Project Two
             cd $APP_TWO_PATH &&
             npm install &&
-            npm run build &&
             pm2 restart $PM2_PROCESS
           EOF
+
           
           echo "Update completed on EC2 instance at IP: $INSTANCE_PUBLIC_IP"
 
