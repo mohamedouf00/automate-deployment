@@ -38,7 +38,7 @@ jobs:
           SSH_KEY_PATH="${{ secrets.SSH_PRIVATE_KEY }}" # Path to your SSH private key
           LAUNCH_TEMPLATE_NAME="ouf-LT"
           AUTOSCALING_TAG="ouf-asg"
-          INSTANCE_PUBLIC_IP=$(aws ec2 describe-instances --filters Name=tag:Name,Values="$APP_INSTANCE_TAG" --query "Reservations[*].Instances[*].PublicIpAddress" --output text)
+          INSTANCE_PUBLIC_IP=${{secrets.INSTANCE_PUBLIC_IP}}
 
           # If the EC2 instance's public IP is not found, exit
           if [ -z "$INSTANCE_PUBLIC_IP" ]; then
