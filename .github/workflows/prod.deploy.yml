@@ -160,12 +160,16 @@ jobs:
 
           echo "AMI is available. Creating new Launch Template version..."
           # Create a new version of the Launch Template with the updated AMI
+          # Capture the GitHub input in a shell variable
+          VERSION_NUMBER="${{ github.event.inputs.version_Number }}"
+
+          # Use the shell variable in the command
           aws ec2 create-launch-template-version \
             --launch-template-id $TEMPLATE_ID \
             --source-version 1 \
-            --launch-template-data '{"ImageId":"'"$AMI_ID"'", "TagSpecifications":[{"ResourceType":"instance","Tags":[{"Key":"Name","Value":"'"${{ github.event.inputs.version_Number }}"'"}]}]}' \
-            --version-description "${{ github.event.inputs.version_Number }}"
-
+            --launch-template-data '{"ImageId":"'"$AMI_ID"'", "TagSpecifications":[{"ResourceType":"instance","Tags":[{"Key":"Name","Value":"'"$VERSION_NUMBER"'"}]}]}' \
+            --version-description "$VERSION_NUMBER"
+            
           # Get the latest version number (sort by VersionNumber to ensure latest)
           LATEST_VERSION=$(aws ec2 describe-launch-template-versions \
             --launch-template-id $TEMPLATE_ID \
@@ -202,3 +206,5 @@ jobs:
           echo "Starting instance refresh..."
           aws autoscaling start-instance-refresh --auto-scaling-group-name $ASG_NAME --preferences '{"MinHealthyPercentage": 10, "InstanceWarmup": 200}'
           echo "Triggered Rolling Update for Auto Scaling Group: $ASG_NAME"
+      # Step 8: Health Check
+      
