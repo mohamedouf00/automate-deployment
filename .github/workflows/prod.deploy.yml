@@ -1,10 +1,11 @@
 name: Deploy to EC2 with AMI Update and Rolling Deployment
 
 on:
-  push:
-    branches:
-      - main
-
+  workflow_dispatch:
+    inputs:
+      version_Number:
+        description: "Version Number for AMI"
+        required: true
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -57,7 +58,7 @@ jobs:
             echo "No EC2 instance ID found. Exiting."
             exit 1
           fi
-          
+
           echo "EC2 instance found with ID: $INSTANCE_ID"
 
           if [ -z "$INSTANCE_PUBLIC_IP" ]; then
@@ -107,42 +108,13 @@ jobs:
 
             echo "SSH session completed successfully."
           EOF
-          # Retrieve the versions from the temp file
-          VERSION_ONE=$(grep "Project One Version" $TEMP_FILE_PATH | awk '{print $4}')
-          VERSION_TWO=$(grep "Project Two Version" $TEMP_FILE_PATH | awk '{print $4}')
-
-          # Check if versions were successfully retrieved
-          if [ -z "$VERSION_ONE" ]; then
-            echo "Error: Failed to retrieve VERSION_ONE. Exiting."
-            exit 1
-          fi
-
-          if [ -z "$VERSION_TWO" ]; then
-            echo "Error: Failed to retrieve VERSION_TWO. Exiting."
-            exit 1
-          fi
-
-          echo "VERSION_ONE=$VERSION_ONE"
-          echo "VERSION_TWO=$VERSION_TWO"
-          echo "VERSION_ONE=$VERSION_ONE" >> $GITHUB_ENV
-          echo "VERSION_TWO=$VERSION_TWO" >> $GITHUB_ENV
-
-
-
       # Step 5: Create AMI from the updated EC2 instance
       - name: Create AMI from EC2
         run: |
           set -e  # Exit on any error
           echo "Creating AMI from EC2 instance..."
           INSTANCE_ID="${{ secrets.INSTANCE_ID }}"
-          VERSION_ONE="${{ env.VERSION_ONE }}"
-          VERSION_TWO="${{ env.VERSION_TWO }}"
-
-          echo "INSTANCE_ID: $INSTANCE_ID"
-          echo "VERSION_ONE: $VERSION_ONE"
-          echo "VERSION_TWO: $VERSION_TWO"
-
-          AMI_NAME="App-AMI-$(date +'%Y-%m-%d')-project1-${VERSION_ONE}-project2-${VERSION_TWO}"
+          AMI_NAME="App-AMI-$(date +'%Y-%m-%d')-v${{ github.event.inputs.version_Number }}"
 
           echo "AMI Name: $AMI_NAME"
 
@@ -208,4 +180,3 @@ jobs:
           echo "Starting instance refresh..."
           aws autoscaling start-instance-refresh --auto-scaling-group-name $ASG_NAME --preferences '{"MinHealthyPercentage": 90, "InstanceWarmup": 300}'
           echo "Triggered Rolling Update for Auto Scaling Group: $ASG_NAME"
-
