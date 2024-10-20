@@ -1,12 +1,9 @@
 name: Deploy to EC2 with AMI Update and Rolling Deployment
 
 on:
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: "Environment to deploy to"
-        required: true
-        default: "production"
+  push:
+    branches:
+      - main
 
 jobs:
   deploy:
@@ -36,14 +33,14 @@ jobs:
           TEMP_FILE_PATH="/tmp/app_versions.txt"
           SSH_USER="ubuntu" # Adjust based on your SSH user
           INSTANCE_ID=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=$APP_INSTANCE_TAG" --query "Reservations[*].Instances[*].InstanceId" --output text)
-          
+
           if [ -z "$INSTANCE_ID" ]; then
             echo "No EC2 instance found with the tag $APP_INSTANCE_TAG"
             exit 1
           fi
-          
+
           INSTANCE_PUBLIC_IP=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[*].Instances[*].PublicIpAddress" --output text)
-          
+
           if [ -z "$INSTANCE_PUBLIC_IP" ]; then
             echo "EC2 instance's public IP not found. Exiting."
             exit 1
@@ -98,13 +95,19 @@ jobs:
       # Step 4: Create AMI from the updated EC2 instance
       - name: Create AMI from EC2
         run: |
+          echo "Creating AMI from EC2 instance: $INSTANCE_ID"
+          # Define the AMI name with project versions and date
           AMI_NAME="App-AMI-$(date +'%Y-%m-%d')-project1-${VERSION_ONE}-project2-${VERSION_TWO}"
 
-          AMI_ID=$(aws ec2 create-image --instance-id $INSTANCE_ID --name "$AMI_NAME" --no-reboot --output text)
-          if [ -z "$AMI_ID" ]; then
+          # Create the AMI and capture the AMI ID
+          AMI_ID=$(aws ec2 create-image --instance-id "$INSTANCE_ID" --name "$AMI_NAME" --no-reboot --query 'ImageId' --output text)
+
+          # Check if AMI creation was successful
+          if [ -z "$AMI_ID" ] || [ "$AMI_ID" == "None" ]; then
             echo "AMI creation failed. Exiting."
             exit 1
           fi
+          # If successful, output the AMI ID and store it in GitHub environment variables
           echo "Created AMI: $AMI_ID"
           echo "AMI_ID=$AMI_ID" >> $GITHUB_ENV
 
