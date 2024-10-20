@@ -88,6 +88,12 @@ jobs:
           EOF
           echo "Update completed on EC2 instance at IP: $INSTANCE_PUBLIC_IP"
 
+          # Extract the versions from the file for later use in the AMI name
+          VERSION_ONE=$(grep "Project One Version" $TEMP_FILE_PATH | awk '{print $4}')
+          VERSION_TWO=$(grep "Project Two Version" $TEMP_FILE_PATH | awk '{print $4}')
+
+          echo "VERSION_ONE=$VERSION_ONE" >> $GITHUB_ENV
+          echo "VERSION_TWO=$VERSION_TWO" >> $GITHUB_ENV
 
       # Step 4: Create AMI from the updated EC2 instance
       - name: Create AMI from EC2
@@ -105,7 +111,7 @@ jobs:
       # Step 5: Update the AWS Launch Template with the new AMI ID
       - name: Update Launch Template with new AMI
         run: |
-          LAUNCH_TEMPLATE_NAME="your-launch-template-name" # Update with your Launch Template name
+          LAUNCH_TEMPLATE_NAME="ouf-LT" # Update with your Launch Template name
           TEMPLATE_ID=$(aws ec2 describe-launch-templates --query "LaunchTemplates[?LaunchTemplateName=='$LAUNCH_TEMPLATE_NAME'].LaunchTemplateId" --output text)
 
           if [ -z "$TEMPLATE_ID" ]; then
@@ -120,7 +126,7 @@ jobs:
       # Step 6: Trigger a Rolling Update in the Auto Scaling Group
       - name: Trigger Rolling Update
         run: |
-          AUTOSCALING_TAG="your-autoscaling-tag-key" # Update with your Auto Scaling tag key
+          AUTOSCALING_TAG="ouf-asg" # Update with your Auto Scaling tag key
           ASG_NAME=$(aws autoscaling describe-auto-scaling-groups --query "AutoScalingGroups[?Tags[?Key=='$AUTOSCALING_TAG']].AutoScalingGroupName" --output text)
 
           if [ -z "$ASG_NAME" ]; then
