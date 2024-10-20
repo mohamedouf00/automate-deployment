@@ -36,11 +36,10 @@ jobs:
             echo "INSTANCE_PUBLIC_IP: ${{ secrets.INSTANCE_PUBLIC_IP }}"
           fi
 
-      # Step 4: Define all variables and update EC2 instances using SSH
+      # Step 4: Define all variables and Update EC2 Using SSH
       - name: Define Variables and Update EC2 Using SSH
         run: |
           set -e  # Exit on any error
-          # Variables
           APP_INSTANCE_TAG="live-test"
           APP_ONE_PATH="/home/ubuntu/automate-deployment"
           APP_TWO_PATH="/home/ubuntu/automate-deployment-1"
@@ -71,7 +70,7 @@ jobs:
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > private_key.pem
           chmod 600 private_key.pem
 
-          # Run SSH commands to update the projects
+          # Run SSH commands to update the projects and fetch the versions
           ssh -o StrictHostKeyChecking=no -i private_key.pem $SSH_USER@$INSTANCE_PUBLIC_IP << EOF
             export PATH=$PATH:/run/user/1000/fnm_multishells/7830_1729424728206/bin
 
@@ -103,12 +102,9 @@ jobs:
             pm2 restart $PM2_PROCESS
           EOF
 
-          echo "Update completed on EC2 instance at IP: $INSTANCE_PUBLIC_IP"
-
-          # Extract the versions from the file for later use in the AMI name
+          # Read versions into environment variables for later use
           VERSION_ONE=$(grep "Project One Version" $TEMP_FILE_PATH | awk '{print $4}')
           VERSION_TWO=$(grep "Project Two Version" $TEMP_FILE_PATH | awk '{print $4}')
-
           echo "VERSION_ONE=$VERSION_ONE" >> $GITHUB_ENV
           echo "VERSION_TWO=$VERSION_TWO" >> $GITHUB_ENV
 
@@ -117,14 +113,16 @@ jobs:
         run: |
           set -e  # Exit on any error
           INSTANCE_ID="${{ secrets.INSTANCE_ID }}"
-          echo "Creating AMI from EC2 instance: $INSTANCE_ID"
+          VERSION_ONE="${{ env.VERSION_ONE }}"
+          VERSION_TWO="${{ env.VERSION_TWO }}"
 
+          echo "Creating AMI from EC2 instance: $INSTANCE_ID"
           if [ -z "$INSTANCE_ID" ]; then
             echo "Error: INSTANCE_ID is not set. Exiting."
             exit 1
           fi
 
-          AMI_NAME="App-AMI-$(date +'%Y-%m-%d')-project1-${{ env.VERSION_ONE }}-project2-${{ env.VERSION_TWO }}"
+          AMI_NAME="App-AMI-$(date +'%Y-%m-%d')-project1-${VERSION_ONE}-project2-${VERSION_TWO}"
 
           AMI_ID=$(aws ec2 create-image --instance-id "$INSTANCE_ID" --name "$AMI_NAME" --no-reboot --query 'ImageId' --output text)
 
@@ -139,7 +137,6 @@ jobs:
       # Step 6: Update the AWS Launch Template with the new AMI ID
       - name: Update Launch Template with new AMI
         run: |
-        
           set -e  # Exit on any error
           LAUNCH_TEMPLATE_NAME="ouf-LT"
           TEMPLATE_ID=$(aws ec2 describe-launch-templates --query "LaunchTemplates[?LaunchTemplateName=='$LAUNCH_TEMPLATE_NAME'].LaunchTemplateId" --output text)
@@ -148,13 +145,13 @@ jobs:
             exit 1
           fi
 
-          # check if the AMI_ID is set
+          # Check if the AMI_ID is set
           if [ -z "${{ env.AMI_ID }}" ]; then
             echo "AMI_ID is not set. Exiting."
             exit 1
           fi
 
-          #check if the AMI_NAME is available not pending
+          # Check if the AMI_NAME is available, not pending
           AMI_NAME="App-AMI-$(date +'%Y-%m-%d')-project1-${{ env.VERSION_ONE }}-project2-${{ env.VERSION_TWO }}"
           AMI_ID="${{ env.AMI_ID }}"
           AMI_STATE=$(aws ec2 describe-images --image-ids $AMI_ID --query 'Images[0].State' --output text)
@@ -167,7 +164,7 @@ jobs:
 
           aws ec2 create-launch-template-version --launch-template-id $TEMPLATE_ID --source-version 1 --launch-template-data '{"ImageId":"'"${{ env.AMI_ID }}"'"}'
           aws ec2 modify-launch-template --launch-template-id $TEMPLATE_ID  --default-version 2
-          ## set resource tags need it by image name
+          ## Set resource tags needed by image name
           aws ec2 create-tags --resources $AMI_ID --tags Key=Name,Value=$AMI_NAME
           echo "Launch Template updated with new AMI: $AMI_ID"
 
