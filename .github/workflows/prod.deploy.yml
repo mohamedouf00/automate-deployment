@@ -57,7 +57,7 @@ jobs:
           chmod 600 private_key.pem
 
           # Run the SSH commands to update the projects
-                    ssh -o StrictHostKeyChecking=no -i private_key.pem $SSH_USER@$INSTANCE_PUBLIC_IP << EOF
+                     ssh -o StrictHostKeyChecking=no -i private_key.pem $SSH_USER@$INSTANCE_PUBLIC_IP << EOF
             # Project One: Checkout to the latest release and log version
             cd $APP_ONE_PATH &&
             git fetch --all &&
@@ -77,14 +77,17 @@ jobs:
 
             # Install dependencies, build, and restart services for Project One
             cd $APP_ONE_PATH &&
-            npm install &&
+            /usr/bin/npm install &&
+            /usr/bin/npm run build &&
             pm2 restart $PM2_PROCESS &&
 
             # Install dependencies, build, and restart services for Project Two
             cd $APP_TWO_PATH &&
-            npm install &&
+            /usr/bin/npm install &&
+            /usr/bin/npm run build &&
             pm2 restart $PM2_PROCESS
           EOF
+
 
           
           echo "Update completed on EC2 instance at IP: $INSTANCE_PUBLIC_IP"
