@@ -54,9 +54,11 @@ jobs:
           # Save the private key for SSH usage
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > private_key.pem
           chmod 600 private_key.pem
-
           # Run the SSH commands to update the projects
           ssh -o StrictHostKeyChecking=no -i private_key.pem $SSH_USER@$INSTANCE_PUBLIC_IP << EOF
+            # Initialize fnm and add the necessary paths to npm and pm2
+            export PATH=$PATH:/run/user/1000/fnm_multishells/7830_1729424728206/bin
+
             # Project One: Checkout to the latest release and log version
             cd $APP_ONE_PATH &&
             git fetch --all &&
@@ -73,18 +75,19 @@ jobs:
 
             # Output the versions
             cat $TEMP_FILE_PATH &&
+            
             # Install dependencies, build, and restart services for Project One
-            cd $APP_ONE_PATH 
-             pwd
-            npm install 
-            pm2 restart $PM2_PROCESS 
+            cd $APP_ONE_PATH &&
+            npm install &&
+            pm2 restart $PM2_PROCESS &&
+            
             # Install dependencies, build, and restart services for Project Two
-            cd $APP_TWO_PATH 
-            pwd
-            npm install 
+            cd $APP_TWO_PATH &&
+            npm install &&
             pm2 restart $PM2_PROCESS
           EOF
           echo "Update completed on EC2 instance at IP: $INSTANCE_PUBLIC_IP"
+
 
       # Step 4: Create AMI from the updated EC2 instance
       - name: Create AMI from EC2
