@@ -1,12 +1,9 @@
 name: Deploy to EC2 with AMI Update and Rolling Deployment
 
 on:
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: "Environment to deploy to Production"
-        required: true
-        default: "production"
+  push:
+    branches:
+      - main # Trigger on push to the main branch
 
 jobs:
   deploy:
@@ -25,54 +22,60 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1 # Change this with your region
 
-      # Step 3: Define all variables and update EC2 instances by pulling the latest release for both apps
-      - name: Define Variables and Update EC2
+      # Step 3: Define all variables and update EC2 instances using SSH
+      - name: Define Variables and Update EC2 Using SSH
         run: |
           # Variables
           APP_INSTANCE_TAG="live-test"
-          APP_ONE_PATH="/home/ubuntu/automate-deployment"
-          APP_TWO_PATH="/home/ubuntu/automate-deployment-1"
+          APP_ONE_PATH="/home/ubuntu/aydi-worker-backend"
+          APP_TWO_PATH="/home/ubuntu/aydi-inventory-backend"
           PM2_PROCESS="all" # Process name if using PM2
           TEMP_FILE_PATH="/tmp/app_versions.txt"
+          SSH_USER="ubuntu" # Change based on the user you connect with
+          SSH_KEY_PATH="${{ secrets.SSH_PRIVATE_KEY }}" # Path to your SSH private key
           LAUNCH_TEMPLATE_NAME="ouf-LT"
           AUTOSCALING_TAG="ouf-asg"
+          INSTANCE_PUBLIC_IP=$(aws ec2 describe-instances --filters Name=tag:Name,Values="$APP_INSTANCE_TAG" --query "Reservations[*].Instances[*].PublicIpAddress" --output text)
 
-          # Get EC2 instance ID by Tag
-          INSTANCE_ID=$(aws ec2 describe-instances --filters Name=tag:Name,Values="$APP_INSTANCE_TAG" --query "Reservations[*].Instances[*].InstanceId" --output text)
-
-          # If the EC2 instance is not found, exit
-          if [ -z "$INSTANCE_ID" ]; then
-            echo "EC2 instance not found. Exiting."
+          # If the EC2 instance's public IP is not found, exit
+          if [ -z "$INSTANCE_PUBLIC_IP" ]; then
+            echo "EC2 instance's public IP not found. Exiting."
             exit 1
           fi
-          echo "Updating EC2 instance: $INSTANCE_ID"
+          echo "Updating EC2 instance at IP: $INSTANCE_PUBLIC_IP"
 
-            # Run SSM command to pull latest release and log version information
-          aws ssm send-command \
-            --instance-ids $INSTANCE_ID \
-            --document-name "AWS-RunShellScript" \
-            --parameters commands='[
-              "cd '"$APP_ONE_PATH"'",
-              "git fetch --all",
-              "git checkout $(git describe --tags $(git rev-list --tags --max-count=1))",
-              "VERSION_ONE=$(git describe --tags $(git rev-list --tags --max-count=1))",
-              "echo Project One Version: $VERSION_ONE >> '"$TEMP_FILE_PATH"'",
-              
-              "cd '"$APP_TWO_PATH"'",
-              "git fetch --all",
-              "git checkout $(git describe --tags $(git rev-list --tags --max-count=1))",
-              "VERSION_TWO=$(git describe --tags $(git rev-list --tags --max-count=1))",
-              "echo Project Two Version: $VERSION_TWO >> '"$TEMP_FILE_PATH"'",
-              
-              "cat '"$TEMP_FILE_PATH"'",
-              
-              "cd '"$APP_ONE_PATH"' && npm install && npm run build",
-              "pm2 restart $PM2_PROCESS",
-              
-              "cd '"$APP_TWO_PATH"' && npm install && npm run build",
-              "pm2 restart $PM2_PROCESS"
-            ]'
-          echo "Update command sent to EC2 instance: $INSTANCE_ID"
+          # Run the SSH commands to update the projects
+          ssh -o StrictHostKeyChecking=no -i "$SSH_KEY_PATH" $SSH_USER@$INSTANCE_PUBLIC_IP << 'EOF'
+            # Project One: Checkout to the latest release and log version
+            cd $APP_ONE_PATH &&
+            git fetch --all &&
+            git checkout $(git describe --tags $(git rev-list --tags --max-count=1)) &&
+            VERSION_ONE=$(git describe --tags $(git rev-list --tags --max-count=1)) &&
+            echo "Project One Version: $VERSION_ONE" >> $TEMP_FILE_PATH &&
+
+            # Project Two: Checkout to the latest release and log version
+            cd $APP_TWO_PATH &&
+            git fetch --all &&
+            git checkout $(git describe --tags $(git rev-list --tags --max-count=1)) &&
+            VERSION_TWO=$(git describe --tags $(git rev-list --tags --max-count=1)) &&
+            echo "Project Two Version: $VERSION_TWO" >> $TEMP_FILE_PATH &&
+
+            # Output the versions
+            cat $TEMP_FILE_PATH &&
+
+            # Install dependencies, build, and restart services for Project One
+            cd $APP_ONE_PATH &&
+            npm install &&
+            npm run build &&
+            pm2 restart $PM2_PROCESS &&
+
+            # Install dependencies, build, and restart services for Project Two
+            cd $APP_TWO_PATH &&
+            npm install &&
+            npm run build &&
+            pm2 restart $PM2_PROCESS
+          EOF
+          echo "Update completed on EC2 instance at IP: $INSTANCE_PUBLIC_IP"
 
       # Step 4: Create AMI from the updated EC2 instance
       - name: Create AMI from EC2
@@ -109,7 +112,7 @@ jobs:
       # Step 6: Trigger a Rolling Update in the Auto Scaling Group
       - name: Trigger Rolling Update
         run: |
-          # Get the Auto Scaling Group Name
+          # Get the Auto Scaling Group Name based on the AUTOSCALING_TAG
           ASG_NAME=$(aws autoscaling describe-auto-scaling-groups --query "AutoScalingGroups[?Tags[?Key=='$AUTOSCALING_TAG']].AutoScalingGroupName" --output text)
 
           # If Auto Scaling Group is not found, exit
