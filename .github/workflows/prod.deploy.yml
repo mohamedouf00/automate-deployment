@@ -139,6 +139,7 @@ jobs:
       # Step 6: Update the AWS Launch Template with the new AMI ID
       - name: Update Launch Template with new AMI
         run: |
+        
           set -e  # Exit on any error
           LAUNCH_TEMPLATE_NAME="ouf-LT"
           TEMPLATE_ID=$(aws ec2 describe-launch-templates --query "LaunchTemplates[?LaunchTemplateName=='$LAUNCH_TEMPLATE_NAME'].LaunchTemplateId" --output text)
@@ -146,8 +147,28 @@ jobs:
             echo "Launch Template not found. Exiting."
             exit 1
           fi
+
+          # check if the AMI_ID is set
+          if [ -z "${{ env.AMI_ID }}" ]; then
+            echo "AMI_ID is not set. Exiting."
+            exit 1
+          fi
+
+          #check if the AMI_NAME is available not pending
+          AMI_NAME="App-AMI-$(date +'%Y-%m-%d')-project1-${{ env.VERSION_ONE }}-project2-${{ env.VERSION_TWO }}"
+          AMI_ID="${{ env.AMI_ID }}"
+          AMI_STATE=$(aws ec2 describe-images --image-ids $AMI_ID --query 'Images[0].State' --output text)
+          echo "AMI State: $AMI_STATE"
+          while [ "$AMI_STATE" == "pending" ]; do
+            echo "AMI is still pending. Waiting for it to be available..."
+            sleep 10
+            AMI_STATE=$(aws ec2 describe-images --image-ids $AMI_ID --query 'Images[0].State' --output text)
+          done
+
           aws ec2 create-launch-template-version --launch-template-id $TEMPLATE_ID --source-version 1 --launch-template-data '{"ImageId":"'"${{ env.AMI_ID }}"'"}'
           aws ec2 modify-launch-template --launch-template-id $TEMPLATE_ID  --default-version 2
+          ## set resource tags need it by image name
+          aws ec2 create-tags --resources $AMI_ID --tags Key=Name,Value=$AMI_NAME
           echo "Launch Template updated with new AMI: $AMI_ID"
 
       # Step 7: Trigger a Rolling Update in the Auto Scaling Group
