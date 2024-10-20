@@ -33,7 +33,7 @@ jobs:
           TEMP_FILE_PATH="/tmp/app_versions.txt"
           SSH_USER="ubuntu" # Adjust based on your SSH user
           INSTANCE_ID=${{ secrets.INSTANCE_ID }}
-          INSTANCE_PUBLIC_IP=${{secrets.INSTANCE_PUBLIC_IP}}
+          INSTANCE_PUBLIC_IP=${{ secrets.INSTANCE_PUBLIC_IP }}
 
           if [ -z "$INSTANCE_ID" ]; then
             echo "No EC2 instance found with the tag $APP_INSTANCE_TAG"
@@ -41,8 +41,6 @@ jobs:
           fi
 
           echo "EC2 instance found with ID: $INSTANCE_ID"
-
-          # Get the public IP of the EC2 instance
 
           if [ -z "$INSTANCE_PUBLIC_IP" ]; then
             echo "EC2 instance's public IP not found. Exiting."
@@ -57,7 +55,6 @@ jobs:
 
           # Run SSH commands to update the projects
           ssh -o StrictHostKeyChecking=no -i private_key.pem $SSH_USER@$INSTANCE_PUBLIC_IP << EOF
-            # Initialize fnm (if needed), set up necessary paths to npm and pm2
             export PATH=$PATH:/run/user/1000/fnm_multishells/7830_1729424728206/bin
 
             # Project One: Checkout the latest release and log version
@@ -76,17 +73,18 @@ jobs:
 
             # Output the versions
             cat $TEMP_FILE_PATH &&
-            
+
             # Install dependencies, build, and restart services for Project One
             cd $APP_ONE_PATH &&
             npm install &&
             pm2 restart $PM2_PROCESS &&
-            
+
             # Install dependencies, build, and restart services for Project Two
             cd $APP_TWO_PATH &&
             npm install &&
             pm2 restart $PM2_PROCESS
           EOF
+
           echo "Update completed on EC2 instance at IP: $INSTANCE_PUBLIC_IP"
 
           # Extract the versions from the file for later use in the AMI name
@@ -101,32 +99,27 @@ jobs:
         run: |
           echo "Creating AMI from EC2 instance: $INSTANCE_ID"
 
-          # Ensure the INSTANCE_ID is set
           if [ -z "$INSTANCE_ID" ]; then
             echo "Error: INSTANCE_ID is not set. Exiting."
             exit 1
           fi
 
-          # Define the AMI name with project versions and date
-          AMI_NAME="App-AMI-$(date +'%Y-%m-%d')-project1-${VERSION_ONE}-project2-${VERSION_TWO}"
+          AMI_NAME="App-AMI-$(date +'%Y-%m-%d')-project1-${{ env.VERSION_ONE }}-project2-${{ env.VERSION_TWO }}"
 
-          # Create the AMI and capture the AMI ID
           AMI_ID=$(aws ec2 create-image --instance-id "$INSTANCE_ID" --name "$AMI_NAME" --no-reboot --query 'ImageId' --output text)
 
-          # Check if AMI creation was successful
           if [ -z "$AMI_ID" ] || [ "$AMI_ID" == "None" ]; then
             echo "AMI creation failed. Exiting."
             exit 1
           fi
 
-          # If successful, output the AMI ID and store it in GitHub environment variables
           echo "Created AMI: $AMI_ID"
           echo "AMI_ID=$AMI_ID" >> $GITHUB_ENV
 
       # Step 5: Update the AWS Launch Template with the new AMI ID
       - name: Update Launch Template with new AMI
         run: |
-          LAUNCH_TEMPLATE_NAME="ouf-LT" # Update with your Launch Template name
+          LAUNCH_TEMPLATE_NAME="ouf-LT"
           TEMPLATE_ID=$(aws ec2 describe-launch-templates --query "LaunchTemplates[?LaunchTemplateName=='$LAUNCH_TEMPLATE_NAME'].LaunchTemplateId" --output text)
 
           if [ -z "$TEMPLATE_ID" ]; then
@@ -134,14 +127,14 @@ jobs:
             exit 1
           fi
 
-          aws ec2 create-launch-template-version --launch-template-id $TEMPLATE_ID --source-version 1 --launch-template-data '{"ImageId":"'"$AMI_ID"'"}'
+          aws ec2 create-launch-template-version --launch-template-id $TEMPLATE_ID --source-version 1 --launch-template-data '{"ImageId":"'"${{ env.AMI_ID }}"'"}'
           aws ec2 modify-launch-template --launch-template-id $TEMPLATE_ID --default-version 2
           echo "Launch Template updated with new AMI: $AMI_ID"
 
       # Step 6: Trigger a Rolling Update in the Auto Scaling Group
       - name: Trigger Rolling Update
         run: |
-          AUTOSCALING_TAG="ouf-asg" # Update with your Auto Scaling tag key
+          AUTOSCALING_TAG="ouf-asg"
           ASG_NAME=$(aws autoscaling describe-auto-scaling-groups --query "AutoScalingGroups[?Tags[?Key=='$AUTOSCALING_TAG']].AutoScalingGroupName" --output text)
 
           if [ -z "$ASG_NAME" ]; then
