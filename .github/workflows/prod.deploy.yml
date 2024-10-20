@@ -38,6 +38,8 @@ jobs:
           fi
 
       # Step 4: Define all variables and Update EC2 Using SSH
+      # Step 4: Define all variables and Update EC2 Using SSH
+      # Step 4: Define all variables and Update EC2 Using SSH
       - name: Define Variables and Update EC2 Using SSH
         run: |
           set -e  # Exit on any error
@@ -79,40 +81,34 @@ jobs:
             set -e  # Exit on any error
             export PATH=$PATH:/run/user/1000/fnm_multishells/7830_1729424728206/bin
             echo "Creating or clearing the temp file for storing versions..."
-            > $TEMP_FILE_PATH
+            > $TEMP_FILE_PATH || { echo "Failed to create $TEMP_FILE_PATH"; exit 1; }
 
             echo "Checking out latest version of Project One..."
-            cd $APP_ONE_PATH
-            git fetch --all
-            LATEST_TAG_ONE=\$(git describe --tags \$(git rev-list --tags --max-count=1))
-            if [ -z "\$LATEST_TAG_ONE" ]; then
-              echo "Error: Failed to retrieve latest tag for Project One."
-              exit 1
-            fi
-            echo "Project One Version: \$LATEST_TAG_ONE" >> $TEMP_FILE_PATH
+            cd $APP_ONE_PATH || { echo "Failed to change directory to $APP_ONE_PATH"; exit 1; }
+            git fetch --all || { echo "Git fetch failed for Project One"; exit 1; }
+            LATEST_TAG_ONE=\$(git describe --tags \$(git rev-list --tags --max-count=1)) || { echo "Failed to retrieve latest tag for Project One"; exit 1; }
+            echo "Project One Version: \$LATEST_TAG_ONE" >> $TEMP_FILE_PATH || { echo "Failed to write Project One version to $TEMP_FILE_PATH"; exit 1; }
 
             echo "Checking out latest version of Project Two..."
-            cd $APP_TWO_PATH
-            git fetch --all
-            LATEST_TAG_TWO=\$(git describe --tags \$(git rev-list --tags --max-count=1))
-            if [ -z "\$LATEST_TAG_TWO" ]; then
-              echo "Error: Failed to retrieve latest tag for Project Two."
-              exit 1
-            fi
-            echo "Project Two Version: \$LATEST_TAG_TWO" >> $TEMP_FILE_PATH
+            cd $APP_TWO_PATH || { echo "Failed to change directory to $APP_TWO_PATH"; exit 1; }
+            git fetch --all || { echo "Git fetch failed for Project Two"; exit 1; }
+            LATEST_TAG_TWO=\$(git describe --tags \$(git rev-list --tags --max-count=1)) || { echo "Failed to retrieve latest tag for Project Two"; exit 1; }
+            echo "Project Two Version: \$LATEST_TAG_TWO" >> $TEMP_FILE_PATH || { echo "Failed to write Project Two version to $TEMP_FILE_PATH"; exit 1; }
 
             echo "Outputting the versions..."
-            cat $TEMP_FILE_PATH
+            cat $TEMP_FILE_PATH || { echo "Failed to output versions from $TEMP_FILE_PATH"; exit 1; }
 
             echo "Installing dependencies and restarting services for Project One..."
-            cd $APP_ONE_PATH
-            npm install
-            pm2 restart $PM2_PROCESS
+            cd $APP_ONE_PATH || { echo "Failed to change directory to $APP_ONE_PATH"; exit 1; }
+            npm install || { echo "npm install failed for Project One"; exit 1; }
+            pm2 restart $PM2_PROCESS || { echo "pm2 restart failed for Project One"; exit 1; }
 
             echo "Installing dependencies and restarting services for Project Two..."
-            cd $APP_TWO_PATH
-            npm install
-            pm2 restart $PM2_PROCESS
+            cd $APP_TWO_PATH || { echo "Failed to change directory to $APP_TWO_PATH"; exit 1; }
+            npm install || { echo "npm install failed for Project Two"; exit 1; }
+            pm2 restart $PM2_PROCESS || { echo "pm2 restart failed for Project Two"; exit 1; }
+
+            echo "SSH session completed successfully."
           EOF
 
           echo "Reading project versions..."
@@ -139,6 +135,7 @@ jobs:
           echo "VERSION_TWO=$VERSION_TWO"
           echo "VERSION_ONE=$VERSION_ONE" >> $GITHUB_ENV
           echo "VERSION_TWO=$VERSION_TWO" >> $GITHUB_ENV
+
 
 
       # Step 5: Create AMI from the updated EC2 instance
