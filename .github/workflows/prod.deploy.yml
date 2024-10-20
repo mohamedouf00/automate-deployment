@@ -36,9 +36,6 @@ jobs:
           else
             echo "INSTANCE_PUBLIC_IP: ${{ secrets.INSTANCE_PUBLIC_IP }}"
           fi
-
-      # Step 4: Define all variables and Update EC2 Using SSH
-      # Step 4: Define all variables and Update EC2 Using SSH
       # Step 4: Define all variables and Update EC2 Using SSH
       - name: Define Variables and Update EC2 Using SSH
         run: |
@@ -48,7 +45,7 @@ jobs:
           APP_ONE_PATH="/home/ubuntu/automate-deployment"
           APP_TWO_PATH="/home/ubuntu/automate-deployment-1"
           PM2_PROCESS="all" # Adjust this based on your PM2 configuration
-          TEMP_FILE_PATH="/tmp/app_versions.txt"
+          TEMP_FILE_PATH="/home/ubuntu/versions.txt"
           SSH_USER="ubuntu" # Adjust based on your SSH user
           INSTANCE_ID="${{ secrets.INSTANCE_ID }}"
           INSTANCE_PUBLIC_IP="${{ secrets.INSTANCE_PUBLIC_IP }}"
@@ -110,13 +107,7 @@ jobs:
 
             echo "SSH session completed successfully."
           EOF
-
-          echo "Reading project versions..."
-          if ! [ -f $TEMP_FILE_PATH ]; then
-            echo "Error: $TEMP_FILE_PATH does not exist."
-            exit 1
-          fi
-
+          # Retrieve the versions from the temp file
           VERSION_ONE=$(grep "Project One Version" $TEMP_FILE_PATH | awk '{print $4}')
           VERSION_TWO=$(grep "Project Two Version" $TEMP_FILE_PATH | awk '{print $4}')
 
