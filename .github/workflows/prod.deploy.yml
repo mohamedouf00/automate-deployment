@@ -41,6 +41,8 @@ jobs:
             exit 1
           fi
 
+          echo "EC2 instance found with ID: $INSTANCE_ID"
+
           # Get the public IP of the EC2 instance
           INSTANCE_PUBLIC_IP=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[*].Instances[*].PublicIpAddress" --output text)
 
@@ -54,7 +56,7 @@ jobs:
           # Save the private key for SSH usage
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > private_key.pem
           chmod 600 private_key.pem
-          
+
           # Run SSH commands to update the projects
           ssh -o StrictHostKeyChecking=no -i private_key.pem $SSH_USER@$INSTANCE_PUBLIC_IP << EOF
             # Initialize fnm (if needed), set up necessary paths to npm and pm2
@@ -100,6 +102,13 @@ jobs:
       - name: Create AMI from EC2
         run: |
           echo "Creating AMI from EC2 instance: $INSTANCE_ID"
+
+          # Ensure the INSTANCE_ID is set
+          if [ -z "$INSTANCE_ID" ]; then
+            echo "Error: INSTANCE_ID is not set. Exiting."
+            exit 1
+          fi
+
           # Define the AMI name with project versions and date
           AMI_NAME="App-AMI-$(date +'%Y-%m-%d')-project1-${VERSION_ONE}-project2-${VERSION_TWO}"
 
@@ -111,6 +120,7 @@ jobs:
             echo "AMI creation failed. Exiting."
             exit 1
           fi
+
           # If successful, output the AMI ID and store it in GitHub environment variables
           echo "Created AMI: $AMI_ID"
           echo "AMI_ID=$AMI_ID" >> $GITHUB_ENV
