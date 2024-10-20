@@ -32,9 +32,8 @@ jobs:
           PM2_PROCESS="all" # Adjust this based on your PM2 configuration
           TEMP_FILE_PATH="/tmp/app_versions.txt"
           SSH_USER="ubuntu" # Adjust based on your SSH user
-
-          # Get EC2 instance ID from tag
-          INSTANCE_ID=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=$APP_INSTANCE_TAG" --query "Reservations[*].Instances[*].InstanceId" --output text)
+          INSTANCE_ID=${{ secrets.INSTANCE_ID }}
+          INSTANCE_PUBLIC_IP=${{secrets.INSTANCE_PUBLIC_IP}}
 
           if [ -z "$INSTANCE_ID" ]; then
             echo "No EC2 instance found with the tag $APP_INSTANCE_TAG"
@@ -44,7 +43,6 @@ jobs:
           echo "EC2 instance found with ID: $INSTANCE_ID"
 
           # Get the public IP of the EC2 instance
-          INSTANCE_PUBLIC_IP=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[*].Instances[*].PublicIpAddress" --output text)
 
           if [ -z "$INSTANCE_PUBLIC_IP" ]; then
             echo "EC2 instance's public IP not found. Exiting."
