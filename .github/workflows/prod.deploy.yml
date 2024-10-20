@@ -77,7 +77,7 @@ jobs:
           echo "Connecting to EC2 via SSH to update projects and retrieve versions..."
           ssh -o StrictHostKeyChecking=no -i private_key.pem $SSH_USER@$INSTANCE_PUBLIC_IP << EOF
             set -e  # Exit on any error
-
+            export PATH=$PATH:/run/user/1000/fnm_multishells/7830_1729424728206/bin
             echo "Creating or clearing the temp file for storing versions..."
             > $TEMP_FILE_PATH
 
